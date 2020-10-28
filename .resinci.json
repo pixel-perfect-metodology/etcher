@@ -1,6 +1,6 @@
 {
   "electron": {
-    "npm_version": "6.7.0",
+    "npm_version": "6.14.5",
     "dependencies": {
       "linux": [
         "libudev-dev",
@@ -9,6 +9,7 @@
         "libgtk-3-0",
         "libatk-bridge2.0-0",
         "libdbus-1-3",
+        "libgbm1",
         "libc6"
       ]
     },
@@ -16,34 +17,16 @@
       "appId": "io.balena.etcher",
       "copyright": "Copyright 2016-2020 Balena Ltd",
       "productName": "balenaEtcher",
-      "nodeGypRebuild": true,
+      "nodeGypRebuild": false,
       "afterPack": "./afterPack.js",
+      "asar": false,
       "files": [
-        "build/Release/elevator.node",
         "generated",
-        "lib/shared/catalina-sudo/sudo-askpass.osascript.js",
-        "lib/gui/app/index.html",
-        "lib/gui/css/*.css",
-        "lib/gui/css/fonts/*.woff2",
-        "lib/gui/assets/*.svg",
-        "assets/icon.png",
-        "!node_modules/**/**",
-        "node_modules/**/*.js",
-        "node_modules/**/*.json",
-        "node_modules/**/*.node",
-        "node_modules/**/*.dll",
-        "node_modules/node-raspberrypi-usbboot/blobs/**",
-        "node_modules/flexboxgrid/dist/flexboxgrid.css",
-        "node_modules/roboto-fontface/fonts/roboto/Roboto-Thin.woff",
-        "node_modules/roboto-fontface/fonts/roboto/Roboto-Light.woff",
-        "node_modules/roboto-fontface/fonts/roboto/Roboto-Regular.woff",
-        "node_modules/roboto-fontface/fonts/roboto/Roboto-Medium.woff",
-        "node_modules/roboto-fontface/fonts/roboto/Roboto-Bold.woff",
-        "node_modules/bootstrap-sass/assets/fonts/bootstrap/glyphicons-halflings-regular.woff2"
+        "lib/shared/catalina-sudo/sudo-askpass.osascript.js"
       ],
+      "beforeBuild": "./beforeBuild.js",
       "afterSign": "./afterSignHook.js",
       "mac": {
-        "asar": false,
         "category": "public.app-category.developer-tools",
         "hardenedRuntime": true,
         "entitlements": "entitlements.mac.plist",
@@ -78,6 +61,12 @@
         "priority": "optional",
         "depends": [
           "polkit-1-auth-agent | policykit-1-gnome | polkit-kde-1"
+        ]
+      },
+      "protocols": {
+        "name": "etcher",
+        "schemes": [
+          "etcher"
         ]
       }
     }

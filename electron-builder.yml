@@ -2,33 +2,15 @@ appId: io.balena.etcher
 copyright: Copyright 2016-2020 Balena Ltd
 productName: balenaEtcher
 npmRebuild: true
-nodeGypRebuild: true
+nodeGypRebuild: false
 publish: null
+beforeBuild: "./beforeBuild.js"
 afterPack: "./afterPack.js"
+asar: false
 files:
-  - build/Release/elevator.node
   - generated
   - lib/shared/catalina-sudo/sudo-askpass.osascript.js
-  - lib/gui/app/index.html
-  - lib/gui/css/*.css
-  - lib/gui/css/fonts/*.woff2
-  - lib/gui/assets/*.svg
-  - assets/icon.png
-  - "!node_modules/**/**"
-  - "node_modules/**/*.js"
-  - "node_modules/**/*.json"
-  - "node_modules/**/*.node"
-  - "node_modules/**/*.dll"
-  - node_modules/node-raspberrypi-usbboot/blobs/**
-  - node_modules/flexboxgrid/dist/flexboxgrid.css
-  - node_modules/roboto-fontface/fonts/roboto/Roboto-Thin.woff
-  - node_modules/roboto-fontface/fonts/roboto/Roboto-Light.woff
-  - node_modules/roboto-fontface/fonts/roboto/Roboto-Regular.woff
-  - node_modules/roboto-fontface/fonts/roboto/Roboto-Medium.woff
-  - node_modules/roboto-fontface/fonts/roboto/Roboto-Bold.woff
-  - node_modules/bootstrap-sass/assets/fonts/bootstrap/glyphicons-halflings-regular.woff2
 mac:
-  asar: false
   icon: assets/icon.icns
   category: public.app-category.developer-tools
   hardenedRuntime: true
@@ -82,6 +64,7 @@ deb:
     - libexpat1
     - libfontconfig1
     - libfreetype6
+    - libgbm1
     - libgcc1
     - libgconf-2-4
     - libgdk-pixbuf2.0-0
@@ -108,3 +91,7 @@ deb:
 rpm:
   depends:
     - util-linux
+protocols:
+  name: etcher
+  schemes:
+    - etcher

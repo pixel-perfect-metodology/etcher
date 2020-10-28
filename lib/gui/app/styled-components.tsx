@@ -15,50 +15,41 @@
  */
 
 import * as React from 'react';
-import { Button, ButtonProps, Flex, Provider, Txt } from 'rendition';
-import styled from 'styled-components';
-import { space } from 'styled-system';
+import {
+	Alert as AlertBase,
+	Flex,
+	FlexProps,
+	Button,
+	ButtonProps,
+	Modal as ModalBase,
+	Provider,
+	Txt,
+	Theme as renditionTheme,
+} from 'rendition';
+import styled, { css } from 'styled-components';
 
-import { colors } from './theme';
+import { colors, theme } from './theme';
 
-const theme = {
-	// TODO: Standardize how the colors are specified to match with rendition's format.
-	customColors: colors,
-	button: {
-		border: {
-			width: '0',
-			radius: '24px',
-		},
-		disabled: {
-			opacity: 1,
-		},
+const defaultTheme = {
+	...renditionTheme,
+	...theme,
+	layer: {
 		extend: () => `
-      && {
-				width: 200px;
-				height: 48px;
-				font-size: 16px;
-
-				&:disabled {
-					background-color: ${colors.dark.disabled.background};
-					color: ${colors.dark.disabled.foreground};
-					opacity: 1;
-
-					&:hover {
-						background-color: ${colors.dark.disabled.background};
-						color: ${colors.dark.disabled.foreground};
-					}
-				}
-      }
-    `,
+			> div:first-child {
+				background-color: transparent;
+			}
+		`,
 	},
 };
 
 export const ThemedProvider = (props: any) => (
-	<Provider theme={theme} {...props}></Provider>
+	<Provider theme={defaultTheme} {...props}></Provider>
 );
 
 export const BaseButton = styled(Button)`
+	width: 200px;
 	height: 48px;
+	font-size: 16px;
 `;
 
 export const IconButton = styled((props) => <Button plain {...props} />)`
@@ -75,10 +66,10 @@ export const IconButton = styled((props) => <Button plain {...props} />)`
 `;
 
 export const StepButton = styled((props: ButtonProps) => (
-	<Button {...props}></Button>
+	<BaseButton {...props}></BaseButton>
 ))`
-	color: rgba(255, 255, 255, 0.7);
-	margin: auto;
+	color: #ffffff;
+	font-size: 14px;
 `;
 
 export const ChangeButton = styled(Button)`
@@ -96,17 +87,15 @@ export const ChangeButton = styled(Button)`
 				color: #8f9297;
 			}
 		}
-		${space}
 	}
 `;
-export const StepNameButton = styled(Button)`
-	border-radius: 24px;
-	margin: auto;
-	display: flex;
+
+export const StepNameButton = styled(BaseButton)`
+	display: inline-flex;
 	justify-content: center;
 	align-items: center;
 	width: 100%;
-	font-weight: bold;
+	font-weight: normal;
 	color: ${colors.dark.foreground};
 
 	&:enabled {
@@ -117,20 +106,146 @@ export const StepNameButton = styled(Button)`
 		}
 	}
 `;
-export const StepSelection = styled(Flex)`
-	flex-wrap: wrap;
-	justify-content: center;
-`;
+
 export const Footer = styled(Txt)`
 	margin-top: 10px;
 	color: ${colors.dark.disabled.foreground};
 	font-size: 10px;
 `;
-export const Underline = styled(Txt.span)`
-	border-bottom: 1px dotted;
-	padding-bottom: 2px;
+
+export const DetailsText = (props: FlexProps) => (
+	<Flex
+		alignItems="center"
+		color={colors.dark.disabled.foreground}
+		{...props}
+	/>
+);
+
+const modalFooterShadowCss = css`
+	overflow: auto;
+	background: 0, linear-gradient(rgba(255, 255, 255, 0), white 70%) 0 100%, 0,
+		linear-gradient(rgba(255, 255, 255, 0), rgba(221, 225, 240, 0.5) 70%) 0 100%;
+	background-repeat: no-repeat;
+	background-size: 100% 40px, 100% 40px, 100% 8px, 100% 8px;
+
+	background-repeat: no-repeat;
+	background-color: white;
+	background-size: 100% 40px, 100% 40px, 100% 8px, 100% 8px;
+	background-attachment: local, local, scroll, scroll;
 `;
-export const DetailsText = styled(Txt.p)`
-	color: ${colors.dark.disabled.foreground};
-	margin-bottom: 0;
+
+export const Modal = styled(({ style, ...props }) => {
+	return (
+		<Provider
+			theme={{
+				...defaultTheme,
+				header: {
+					height: '50px',
+				},
+				layer: {
+					extend: () => `
+					${defaultTheme.layer.extend()}
+
+					> div:last-child {
+						top: 0;
+					}
+				`,
+				},
+			}}
+		>
+			<ModalBase
+				position="top"
+				width="97vw"
+				cancelButtonProps={{
+					style: {
+						marginRight: '20px',
+						border: 'solid 1px #2a506f',
+					},
+				}}
+				style={{
+					height: '87.5vh',
+					...style,
+				}}
+				{...props}
+			/>
+		</Provider>
+	);
+})`
+	> div {
+		padding: 0;
+		height: 100%;
+
+		> h3 {
+			margin: 0;
+			padding: 24px 30px 0;
+			height: 14.3%;
+		}
+
+		> div:first-child {
+			height: 81%;
+			padding: 24px 30px 0;
+		}
+
+		> div:nth-child(2) {
+			height: 61%;
+
+			> div:not(.system-drive-alert) {
+				padding: 0 30px;
+				${modalFooterShadowCss}
+			}
+		}
+
+		> div:last-child {
+			margin: 0;
+			flex-direction: ${(props) =>
+				props.reverseFooterButtons ? 'row-reverse' : 'row'};
+			border-radius: 0 0 7px 7px;
+			height: 80px;
+			background-color: #fff;
+			justify-content: center;
+			width: 100%;
+		}
+
+		::-webkit-scrollbar {
+			display: none;
+		}
+	}
+`;
+
+export const ScrollableFlex = styled(Flex)`
+	overflow: auto;
+
+	::-webkit-scrollbar {
+		display: none;
+	}
+
+	> div > div {
+		/* This is required for the sticky table header in TargetsTable */
+		overflow-x: visible;
+	}
+`;
+
+export const Alert = styled((props) => (
+	<AlertBase warning emphasized {...props}></AlertBase>
+))`
+	position: fixed;
+	top: -40px;
+	left: 50%;
+	transform: translate(-50%, 0px);
+	height: 30px;
+	min-width: 50%;
+	padding: 0px;
+	justify-content: center;
+	align-items: center;
+	font-size: 14px;
+	background-color: #fca321;
+	text-align: center;
+
+	* {
+		color: #ffffff;
+	}
+
+	> div:first-child {
+		display: none;
+	}
 `;

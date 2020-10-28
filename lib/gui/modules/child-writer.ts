@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 
-import { delay } from 'bluebird';
 import { Drive as DrivelistDrive } from 'drivelist';
 import * as sdk from 'etcher-sdk';
 import { cleanupTmpFiles } from 'etcher-sdk/build/tmp';
-import * as _ from 'lodash';
 import * as ipc from 'node-ipc';
+import { totalmem } from 'os';
 
-import { File, Http } from 'etcher-sdk/build/source-destination';
+import { BlockDevice, File, Http } from 'etcher-sdk/build/source-destination';
 import { toJSON } from '../../shared/errors';
 import { GENERAL_ERROR, SUCCESS } from '../../shared/exit-codes';
-import { SourceOptions } from '../app/components/source-selector/source-selector';
+import { delay } from '../../shared/utils';
+import { SourceMetadata } from '../app/components/source-selector/source-selector';
 
 ipc.config.id = process.env.IPC_CLIENT_ID as string;
 ipc.config.socketRoot = process.env.IPC_SOCKET_ROOT as string;
@@ -119,7 +119,11 @@ async function writeAndValidate({
 		onProgress,
 		verify,
 		trim: autoBlockmapping,
-		numBuffers: 32,
+		numBuffers: Math.min(
+			2 + (destinations.length - 1) * 32,
+			256,
+			Math.floor(totalmem() / 1024 ** 2 / 8),
+		),
 		decompressFirst,
 	});
 	const result: WriteResult = {
@@ -140,13 +144,12 @@ async function writeAndValidate({
 }
 
 interface WriteOptions {
-	imagePath: string;
+	image: SourceMetadata;
 	destinations: DrivelistDrive[];
 	unmountOnSuccess: boolean;
 	validateWriteOnSuccess: boolean;
 	autoBlockmapping: boolean;
 	decompressFirst: boolean;
-	source: SourceOptions;
 	SourceType: string;
 }
 
@@ -213,7 +216,7 @@ ipc.connectTo(IPC_SERVER_ID, () => {
 		 * writer.on('fail', onFail)
 		 */
 		const onFail = (
-			destination: sdk.sourceDestination.BlockDevice,
+			destination: sdk.sourceDestination.SourceDestination,
 			error: Error,
 		) => {
 			ipc.of[IPC_SERVER_ID].emit('fail', {
@@ -224,14 +227,15 @@ ipc.connectTo(IPC_SERVER_ID, () => {
 			});
 		};
 
-		const destinations = _.map(options.destinations, 'device');
-		log(`Image: ${options.imagePath}`);
+		const destinations = options.destinations.map((d) => d.device);
+		const imagePath = options.image.path;
+		log(`Image: ${imagePath}`);
 		log(`Devices: ${destinations.join(', ')}`);
 		log(`Umount on success: ${options.unmountOnSuccess}`);
 		log(`Validate on success: ${options.validateWriteOnSuccess}`);
 		log(`Auto blockmapping: ${options.autoBlockmapping}`);
 		log(`Decompress first: ${options.decompressFirst}`);
-		const dests = _.map(options.destinations, (destination) => {
+		const dests = options.destinations.map((destination) => {
 			return new sdk.sourceDestination.BlockDevice({
 				drive: destination,
 				unmountOnSuccess: options.unmountOnSuccess,
@@ -240,15 +244,22 @@ ipc.connectTo(IPC_SERVER_ID, () => {
 			});
 		});
 		const { SourceType } = options;
-		let source;
-		if (SourceType === File.name) {
-			source = new File({
-				path: options.imagePath,
-			});
-		} else {
-			source = new Http({ url: options.imagePath });
-		}
 		try {
+			let source;
+			if (options.image.drive) {
+				source = new BlockDevice({
+					drive: options.image.drive,
+					direct: !options.autoBlockmapping,
+				});
+			} else {
+				if (SourceType === File.name) {
+					source = new File({
+						path: imagePath,
+					});
+				} else {
+					source = new Http({ url: imagePath, avoidRandomAccess: true });
+				}
+			}
 			const results = await writeAndValidate({
 				source,
 				destinations: dests,
@@ -259,7 +270,7 @@ ipc.connectTo(IPC_SERVER_ID, () => {
 				onFail,
 			});
 			log(`Finish: ${results.bytesWritten}`);
-			results.errors = _.map(results.errors, (error) => {
+			results.errors = results.errors.map((error) => {
 				return toJSON(error);
 			});
 			ipc.of[IPC_SERVER_ID].emit('done', { results });

@@ -21,8 +21,6 @@ import { v4 as uuidV4 } from 'uuid';
 
 import * as constraints from '../../../shared/drive-constraints';
 import * as errors from '../../../shared/errors';
-import * as fileExtensions from '../../../shared/file-extensions';
-import * as supportedFormats from '../../../shared/supported-formats';
 import * as utils from '../../../shared/utils';
 import * as settings from './settings';
 
@@ -55,7 +53,7 @@ const selectImageNoNilFields = ['path', 'extension'];
 /**
  * @summary Application default state
  */
-const DEFAULT_STATE = Immutable.fromJS({
+export const DEFAULT_STATE = Immutable.fromJS({
 	applicationSessionUuid: '',
 	flashingWorkflowUuid: '',
 	availableDrives: [],
@@ -63,6 +61,8 @@ const DEFAULT_STATE = Immutable.fromJS({
 		devices: Immutable.OrderedSet(),
 	},
 	isFlashing: false,
+	devicePaths: [],
+	failedDevicePaths: [],
 	flashResults: {},
 	flashState: {
 		active: 0,
@@ -78,15 +78,17 @@ const DEFAULT_STATE = Immutable.fromJS({
  * @summary Application supported action messages
  */
 export enum Actions {
-	SET_AVAILABLE_DRIVES,
+	SET_DEVICE_PATHS,
+	SET_FAILED_DEVICE_PATHS,
+	SET_AVAILABLE_TARGETS,
 	SET_FLASH_STATE,
 	RESET_FLASH_STATE,
 	SET_FLASHING_FLAG,
 	UNSET_FLASHING_FLAG,
-	SELECT_DRIVE,
-	SELECT_IMAGE,
-	DESELECT_DRIVE,
-	DESELECT_IMAGE,
+	SELECT_TARGET,
+	SELECT_SOURCE,
+	DESELECT_TARGET,
+	DESELECT_SOURCE,
 	SET_APPLICATION_SESSION_UUID,
 	SET_FLASHING_WORKFLOW_UUID,
 }
@@ -114,7 +116,7 @@ function storeReducer(
 	action: Action,
 ): typeof DEFAULT_STATE {
 	switch (action.type) {
-		case Actions.SET_AVAILABLE_DRIVES: {
+		case Actions.SET_AVAILABLE_TARGETS: {
 			// Type: action.data : Array<DriveObject>
 
 			if (!action.data) {
@@ -132,6 +134,8 @@ function storeReducer(
 			}
 
 			drives = _.sortBy(drives, [
+				// System drives last
+				(d) => !!d.isSystem,
 				// Devices with no devicePath first (usbboot)
 				(d) => !!d.devicePath,
 				// Then sort by devicePath (only available on Linux with udev) or device
@@ -154,7 +158,7 @@ function storeReducer(
 					) {
 						// Deselect this drive gone from availableDrives
 						return storeReducer(accState, {
-							type: Actions.DESELECT_DRIVE,
+							type: Actions.DESELECT_TARGET,
 							data: device,
 						});
 					}
@@ -202,14 +206,14 @@ function storeReducer(
 						) {
 							// Auto-select this drive
 							return storeReducer(accState, {
-								type: Actions.SELECT_DRIVE,
+								type: Actions.SELECT_TARGET,
 								data: drive.device,
 							});
 						}
 
 						// Deselect this drive in case it still is selected
 						return storeReducer(accState, {
-							type: Actions.DESELECT_DRIVE,
+							type: Actions.DESELECT_TARGET,
 							data: drive.device,
 						});
 					},
@@ -264,6 +268,12 @@ function storeReducer(
 				.set('isFlashing', false)
 				.set('flashState', DEFAULT_STATE.get('flashState'))
 				.set('flashResults', DEFAULT_STATE.get('flashResults'))
+				.set('devicePaths', DEFAULT_STATE.get('devicePaths'))
+				.set('failedDevicePaths', DEFAULT_STATE.get('failedDevicePaths'))
+				.set(
+					'lastAverageFlashingSpeed',
+					DEFAULT_STATE.get('lastAverageFlashingSpeed'),
+				)
 				.delete('flashUuid');
 		}
 
@@ -328,14 +338,10 @@ function storeReducer(
 			return state
 				.set('isFlashing', false)
 				.set('flashResults', Immutable.fromJS(action.data))
-				.set(
-					'lastAverageFlashingSpeed',
-					DEFAULT_STATE.get('lastAverageFlashingSpeed'),
-				)
 				.set('flashState', DEFAULT_STATE.get('flashState'));
 		}
 
-		case Actions.SELECT_DRIVE: {
+		case Actions.SELECT_TARGET: {
 			// Type: action.data : String
 
 			const device = action.data;
@@ -385,60 +391,17 @@ function storeReducer(
 		// with image-stream / supported-formats, and have *one*
 		// place where all the image extension / format handling
 		// takes place, to avoid having to check 2+ locations with different logic
-		case Actions.SELECT_IMAGE: {
+		case Actions.SELECT_SOURCE: {
 			// Type: action.data : ImageObject
 
-			verifyNoNilFields(action.data, selectImageNoNilFields, 'image');
+			if (!action.data.drive) {
+				verifyNoNilFields(action.data, selectImageNoNilFields, 'image');
+			}
 
 			if (!_.isString(action.data.path)) {
 				throw errors.createError({
 					title: `Invalid image path: ${action.data.path}`,
 				});
-			}
-
-			if (!_.isString(action.data.extension)) {
-				throw errors.createError({
-					title: `Invalid image extension: ${action.data.extension}`,
-				});
-			}
-
-			const extension = _.toLower(action.data.extension);
-
-			if (!_.includes(supportedFormats.getAllExtensions(), extension)) {
-				throw errors.createError({
-					title: `Invalid image extension: ${action.data.extension}`,
-				});
-			}
-
-			let lastImageExtension = fileExtensions.getLastFileExtension(
-				action.data.path,
-			);
-			lastImageExtension = _.isString(lastImageExtension)
-				? _.toLower(lastImageExtension)
-				: lastImageExtension;
-
-			if (lastImageExtension !== extension) {
-				if (!_.isString(action.data.archiveExtension)) {
-					throw errors.createError({
-						title: 'Missing image archive extension',
-					});
-				}
-
-				const archiveExtension = _.toLower(action.data.archiveExtension);
-
-				if (
-					!_.includes(supportedFormats.getAllExtensions(), archiveExtension)
-				) {
-					throw errors.createError({
-						title: `Invalid image archive extension: ${action.data.archiveExtension}`,
-					});
-				}
-
-				if (lastImageExtension !== archiveExtension) {
-					throw errors.createError({
-						title: `Image archive extension mismatch: ${action.data.archiveExtension} and ${lastImageExtension}`,
-					});
-				}
 			}
 
 			const MINIMUM_IMAGE_SIZE = 0;
@@ -495,7 +458,7 @@ function storeReducer(
 						!constraints.isDriveSizeRecommended(drive, action.data)
 					) {
 						return storeReducer(accState, {
-							type: Actions.DESELECT_DRIVE,
+							type: Actions.DESELECT_TARGET,
 							data: device,
 						});
 					}
@@ -506,7 +469,7 @@ function storeReducer(
 			).setIn(['selection', 'image'], Immutable.fromJS(action.data));
 		}
 
-		case Actions.DESELECT_DRIVE: {
+		case Actions.DESELECT_TARGET: {
 			// Type: action.data : String
 
 			if (!action.data) {
@@ -530,7 +493,7 @@ function storeReducer(
 			);
 		}
 
-		case Actions.DESELECT_IMAGE: {
+		case Actions.DESELECT_SOURCE: {
 			return state.deleteIn(['selection', 'image']);
 		}
 
@@ -540,6 +503,14 @@ function storeReducer(
 
 		case Actions.SET_FLASHING_WORKFLOW_UUID: {
 			return state.set('flashingWorkflowUuid', action.data);
+		}
+
+		case Actions.SET_DEVICE_PATHS: {
+			return state.set('devicePaths', action.data);
+		}
+
+		case Actions.SET_FAILED_DEVICE_PATHS: {
+			return state.set('failedDevicePaths', action.data);
 		}
 
 		default: {

@@ -25,7 +25,7 @@ import * as path from 'path';
 import * as packageJSON from '../../../../package.json';
 import * as errors from '../../../shared/errors';
 import * as permissions from '../../../shared/permissions';
-import { SourceOptions } from '../components/source-selector/source-selector';
+import { SourceMetadata } from '../components/source-selector/source-selector';
 import * as flashState from '../models/flash-state';
 import * as selectionState from '../models/selection-state';
 import * as settings from '../models/settings';
@@ -93,7 +93,11 @@ function terminateServer() {
 }
 
 function writerArgv(): string[] {
-	let entryPoint = electron.remote.app.getAppPath();
+	let entryPoint = path.join(
+		electron.remote.app.getAppPath(),
+		'generated',
+		'child-writer.js',
+	);
 	// AppImages run over FUSE, so the files inside the mount point
 	// can only be accessed by the user that mounted the AppImage.
 	// This means we can't re-spawn Etcher as root from the same
@@ -130,17 +134,10 @@ interface FlashResults {
 	cancelled?: boolean;
 }
 
-/**
- * @summary Perform write operation
- *
- * @description
- * This function is extracted for testing purposes.
- */
-export async function performWrite(
-	image: string,
+async function performWrite(
+	image: SourceMetadata,
 	drives: DrivelistDrive[],
 	onProgress: sdk.multiWrite.OnProgressFunction,
-	source: SourceOptions,
 ): Promise<{ cancelled?: boolean }> {
 	let cancelled = false;
 	ipc.serve();
@@ -172,7 +169,10 @@ export async function performWrite(
 			validateWriteOnSuccess,
 		};
 
-		ipc.server.on('fail', ({ error }: { error: Error & { code: string } }) => {
+		ipc.server.on('fail', ({ device, error }) => {
+			if (device.devicePath) {
+				flashState.addFailedDevicePath(device.devicePath);
+			}
 			handleErrorLogging(error, analyticsData);
 		});
 
@@ -192,10 +192,9 @@ export async function performWrite(
 
 		ipc.server.on('ready', (_data, socket) => {
 			ipc.server.emit(socket, 'write', {
-				imagePath: image,
+				image,
 				destinations: drives,
-				source,
-				SourceType: source.SourceType.name,
+				SourceType: image.SourceType.name,
 				validateWriteOnSuccess,
 				autoBlockmapping,
 				unmountOnSuccess,
@@ -237,7 +236,6 @@ export async function performWrite(
 						title: 'The writer process ended unexpectedly',
 						description:
 							'Please try again, and contact the Etcher team if the problem persists',
-						code: 'ECHILDDIED',
 					}),
 				);
 				return;
@@ -255,15 +253,19 @@ export async function performWrite(
  * @summary Flash an image to drives
  */
 export async function flash(
-	image: string,
+	image: SourceMetadata,
 	drives: DrivelistDrive[],
-	source: SourceOptions,
+	// This function is a parameter so it can be mocked in tests
+	write = performWrite,
 ): Promise<void> {
 	if (flashState.isFlashing()) {
 		throw new Error('There is already a flash in progress');
 	}
 
 	flashState.setFlashingFlag();
+	flashState.setDevicePaths(
+		drives.map((d) => d.devicePath).filter((p) => p != null) as string[],
+	);
 
 	const analyticsData = {
 		image,
@@ -279,13 +281,7 @@ export async function flash(
 	analytics.logEvent('Flash', analyticsData);
 
 	try {
-		// Using it from exports so it can be mocked during tests
-		const result = await exports.performWrite(
-			image,
-			drives,
-			flashState.setProgressState,
-			source,
-		);
+		const result = await write(image, drives, flashState.setProgressState);
 		flashState.unsetFlashingFlag(result);
 	} catch (error) {
 		flashState.unsetFlashingFlag({ cancelled: false, errorCode: error.code });

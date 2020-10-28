@@ -23,11 +23,17 @@ import * as ReactDOM from 'react-dom';
 import { v4 as uuidV4 } from 'uuid';
 
 import * as packageJSON from '../../../package.json';
+import {
+	DrivelistDrive,
+	isDriveValid,
+	isSourceDrive,
+} from '../../shared/drive-constraints';
 import * as EXIT_CODES from '../../shared/exit-codes';
 import * as messages from '../../shared/messages';
 import * as availableDrives from './models/available-drives';
 import * as flashState from './models/flash-state';
 import { init as ledsInit } from './models/leds';
+import { deselectImage, getImage, selectDrive } from './models/selection-state';
 import * as settings from './models/settings';
 import { Actions, observe, store } from './models/store';
 import * as analytics from './modules/analytics';
@@ -41,10 +47,8 @@ window.addEventListener(
 	'unhandledrejection',
 	(event: PromiseRejectionEvent | any) => {
 		// Promise: event.reason
-		// Bluebird: event.detail.reason
 		// Anything else: event
-		const error =
-			event.reason || (event.detail && event.detail.reason) || event;
+		const error = event.reason || event;
 		analytics.logException(error);
 		event.preventDefault();
 	},
@@ -231,12 +235,12 @@ function prepareDrive(drive: Drive) {
 	}
 }
 
-function setDrives(drives: _.Dictionary<any>) {
+function setDrives(drives: _.Dictionary<DrivelistDrive>) {
 	availableDrives.setDrives(_.values(drives));
 }
 
 function getDrives() {
-	return _.keyBy(availableDrives.getDrives() || [], 'device');
+	return _.keyBy(availableDrives.getDrives(), 'device');
 }
 
 async function addDrive(drive: Drive) {
@@ -247,9 +251,26 @@ async function addDrive(drive: Drive) {
 	const drives = getDrives();
 	drives[preparedDrive.device] = preparedDrive;
 	setDrives(drives);
+	if (
+		(await settings.get('autoSelectAllDrives')) &&
+		drive instanceof sdk.sourceDestination.BlockDevice &&
+		// @ts-ignore BlockDevice.drive is private
+		isDriveValid(drive.drive, getImage())
+	) {
+		selectDrive(drive.device);
+	}
 }
 
 function removeDrive(drive: Drive) {
+	if (
+		drive instanceof sdk.sourceDestination.BlockDevice &&
+		// @ts-ignore BlockDevice.drive is private
+		isSourceDrive(drive.drive, getImage())
+	) {
+		// Deselect the image if it was on the drive that was removed.
+		// This will also deselect the image if the drive mountpoints change.
+		deselectImage();
+	}
 	const preparedDrive = prepareDrive(drive);
 	const drives = getDrives();
 	delete drives[preparedDrive.device];
@@ -264,7 +285,8 @@ function updateDriveProgress(
 	// @ts-ignore
 	const driveInMap = drives[drive.device];
 	if (driveInMap) {
-		driveInMap.progress = progress;
+		// @ts-ignore
+		drives[drive.device] = { ...driveInMap, progress };
 		setDrives(drives);
 	}
 }

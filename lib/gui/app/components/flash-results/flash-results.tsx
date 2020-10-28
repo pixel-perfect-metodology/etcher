@@ -14,22 +14,15 @@
  * limitations under the License.
  */
 
+import CircleSvg from '@fortawesome/fontawesome-free/svgs/solid/circle.svg';
+import CheckCircleSvg from '@fortawesome/fontawesome-free/svgs/solid/check-circle.svg';
 import * as _ from 'lodash';
+import outdent from 'outdent';
 import * as React from 'react';
-import { Txt } from 'rendition';
-import styled from 'styled-components';
-import { left, position, space, top } from 'styled-system';
+import { Flex, Txt } from 'rendition';
 
 import { progress } from '../../../../shared/messages';
 import { bytesToMegabytes } from '../../../../shared/units';
-import { Underline } from '../../styled-components';
-
-const Div = styled.div<any>`
-  ${position}
-  ${top}
-  ${left}
-  ${space}
-`;
 
 export function FlashResults({
 	errors,
@@ -37,51 +30,77 @@ export function FlashResults({
 }: {
 	errors: string;
 	results: {
+		bytesWritten: number;
+		sourceMetadata: {
+			size: number;
+			blockmappedSize: number;
+		};
 		averageFlashingSpeed: number;
 		devices: { failed: number; successful: number };
 	};
 }) {
-	const averageSpeed = _.round(
-		bytesToMegabytes(results.averageFlashingSpeed),
+	const allDevicesFailed = results.devices.successful === 0;
+	const effectiveSpeed = _.round(
+		bytesToMegabytes(
+			results.sourceMetadata.size /
+				(results.bytesWritten / results.averageFlashingSpeed),
+		),
 		1,
 	);
 	return (
-		<Div position="absolute" left="153px" top="66px">
-			<div className="inline-flex title">
-				<span className="tick tick--success space-right-medium"></span>
-				<h3>Flash Complete!</h3>
-			</div>
-			<Div className="results" mr="0" mb="0" ml="40px">
-				{_.map(results.devices, (quantity, type) => {
+		<Flex
+			flexDirection="column"
+			mr="80px"
+			height="90px"
+			style={{
+				position: 'relative',
+				top: '25px',
+			}}
+		>
+			<Flex alignItems="center">
+				<CheckCircleSvg
+					width="24px"
+					fill={allDevicesFailed ? '#c6c8c9' : '#1ac135'}
+					style={{
+						margin: '0 15px 0 0',
+					}}
+				/>
+				<Txt fontSize={24} color="#fff">
+					Flash Complete!
+				</Txt>
+			</Flex>
+			<Flex flexDirection="column" mr="0" mb="0" ml="40px" color="#7e8085">
+				{Object.entries(results.devices).map(([type, quantity]) => {
 					return quantity ? (
-						<Underline
+						<Flex
+							alignItems="center"
 							tooltip={type === 'failed' ? errors : undefined}
-							key={type}
 						>
-							<div
-								key={type}
-								className={`target-status-line target-status-${type}`}
-							>
-								<span className="target-status-dot"></span>
-								<span className="target-status-quantity">{quantity}</span>
-								<span className="target-status-message">
-									{progress[type](quantity)}
-								</span>
-							</div>
-						</Underline>
+							<CircleSvg
+								width="14px"
+								fill={type === 'failed' ? '#ff4444' : '#1ac135'}
+							/>
+							<Txt ml={10}>{quantity}</Txt>
+							<Txt ml={10}>{progress[type](quantity)}</Txt>
+						</Flex>
 					) : null;
 				})}
-				<Txt
-					color="#787c7f"
-					fontSize="10px"
-					style={{
-						fontWeight: 500,
-						textAlign: 'center',
-					}}
-				>
-					Writing speed: {averageSpeed} MB/s
-				</Txt>
-			</Div>
-		</Div>
+				{!allDevicesFailed && (
+					<Txt
+						fontSize="10px"
+						style={{
+							fontWeight: 500,
+							textAlign: 'center',
+						}}
+						tooltip={outdent({ newline: ' ' })`
+							The speed is calculated by dividing the image size by the flashing time.
+							Disk images with ext partitions flash faster as we are able to skip unused parts.
+						`}
+					>
+						Effective speed: {effectiveSpeed} MB/s
+					</Txt>
+				)}
+			</Flex>
+		</Flex>
 	);
 }
